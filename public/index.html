@@ -273,7 +273,6 @@
       display: block;
       margin-bottom: 0.5rem;
     }
-    form#commentForm input,
     form#commentForm textarea {
       width: 100%;
       margin-bottom: 1.2rem;
@@ -285,6 +284,7 @@
       font-size: 1rem;
       transition: border-color 0.3s ease;
       resize: vertical;
+      box-sizing: border-box;
     }
     form#commentForm input:focus,
     form#commentForm textarea:focus {
@@ -370,7 +370,7 @@
     <h2>My Mate، همراه هوشمند و ساده شما برای ساخت و مدیریت لیست خرید روزانه</h2>
     <p>
       با My Mate به راحتی لیست خرید خود را بسازید، ویرایش کنید و حتی با دوستانتان به اشتراک بگذارید.  
-      این اپلیکیشن کاربرپسند، ساده و سریع طراحی شده تا مدیریت خریدهای روزانه‌ شما را راحت‌تر کند.
+    این اپلیکیشن کاربرپسند، ساده و سریع طراحی شده تا مدیریت خریدهای روزانه‌ شما را راحت‌تر کند.
     </p>
     <button disabled>به‌زودی منتشر می‌شود</button>
   </section>
@@ -386,7 +386,7 @@
     </div>
     <div class="feature-card">
       <h3>کاهش بار ذهنی</h3>
-      <p>دیگر نیازی به حفظ کردن خرید نیست My Mate برای همین ساخته شده</p>
+      <p>دیگر نیازی به حفظ لیست خرید نسیت ، My Mate برای همین ساخته شده</p>
     </div>
   </section>
 
@@ -394,14 +394,16 @@
     <h3>نظرات کاربران</h3>
 
     <form id="commentForm">
-      <label for="name">نام شما</label>
-      <input id="name" name="name" type="text" required />
-
       <label for="comment">نظر شما</label>
-      <textarea id="comment" name="comment" rows="5" required></textarea>
+      <textarea id="comment" name="comment" rows="5" required placeholder="نظر خود را اینجا بنویسید..."></textarea>
 
       <button type="submit">ثبت نظر</button>
+      <p id="commentError" class="text-red-600 mt-2 text-center" style="display: none;"></p>
     </form>
+    <div id="loginPrompt" style="display: none; background: #fff9e6; padding: 1.5rem; border-radius: 20px; text-align: center; margin-top: 1rem;">
+      <p style="color: #5a4d0e; font-weight: 600; margin-bottom: 1rem;">برای ثبت نظر باید وارد شوید</p>
+      <a href="login.html" class="btn-auth" style="display: inline-block;">ورود</a>
+    </div>
 
     <div id="commentsList">
       <p>نظری ثبت نشده است.</p>
@@ -419,31 +421,123 @@
   // Check authentication and update nav buttons
   Auth.updateNavButtons();
 
-  // فرم ثبت نظر ساده
+  // Load comments and handle form
   const form = document.getElementById('commentForm');
   const commentsList = document.getElementById('commentsList');
+  const commentError = document.getElementById('commentError');
+  const loginPrompt = document.getElementById('loginPrompt');
+  let currentUser = null;
 
-  form.addEventListener('submit', e => {
-    e.preventDefault();
-    const name = form.name.value.trim();
-    const comment = form.comment.value.trim();
+  // Check authentication and update UI
+  async function checkAuthAndUpdateUI() {
+    currentUser = await Auth.checkAuth();
+    
+    if (currentUser) {
+      // User is logged in - show form, hide login prompt
+      form.style.display = 'block';
+      loginPrompt.style.display = 'none';
+    } else {
+      // User is not logged in - hide form, show login prompt
+      form.style.display = 'none';
+      loginPrompt.style.display = 'block';
+    }
+  }
 
-    if(name && comment) {
-      const commentItem = document.createElement('div');
-      commentItem.style.padding = '1rem';
-      commentItem.style.borderBottom = '1px solid #fad761';
-      commentItem.style.color = '#5a4d0e';
-      commentItem.style.fontWeight = '600';
-      commentItem.style.marginBottom = '0.8rem';
-      commentItem.textContent = `${name}: ${comment}`;
-
-      if(commentsList.querySelector('p')) {
-        commentsList.innerHTML = '';
+  // Load comments from server
+  async function loadComments() {
+    try {
+      const res = await fetch('/api/comments', {
+        credentials: 'include',
+      });
+      const comments = await res.json();
+      
+      commentsList.innerHTML = '';
+      
+      if (comments.length === 0) {
+        commentsList.innerHTML = '<p>نظری ثبت نشده است.</p>';
+        return;
       }
-      commentsList.appendChild(commentItem);
+      
+      comments.forEach(c => {
+        const commentItem = document.createElement('div');
+        commentItem.style.padding = '1rem';
+        commentItem.style.borderBottom = '1px solid #fad761';
+        commentItem.style.color = '#5a4d0e';
+        commentItem.style.marginBottom = '0.8rem';
+        commentItem.style.borderRadius = '8px';
+        commentItem.style.background = '#fff9e6';
+        
+        const username = document.createElement('div');
+        username.style.fontWeight = '700';
+        username.style.color = '#d97706';
+        username.style.marginBottom = '0.5rem';
+        username.textContent = c.username || 'کاربر ناشناس';
+        
+        const commentText = document.createElement('div');
+        commentText.style.fontWeight = '600';
+        commentText.style.lineHeight = '1.6';
+        commentText.textContent = c.comment;
+        
+        commentItem.appendChild(username);
+        commentItem.appendChild(commentText);
+        commentsList.appendChild(commentItem);
+      });
+    } catch (error) {
+      console.error('Error loading comments:', error);
+      commentsList.innerHTML = '<p style="color: #dc2626;">خطا در بارگذاری نظرات.</p>';
+    }
+  }
+
+  // Handle form submission
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    commentError.style.display = 'none';
+    
+    if (!currentUser) {
+      commentError.textContent = 'لطفاً ابتدا وارد شوید.';
+      commentError.style.display = 'block';
+      loginPrompt.style.display = 'block';
+      form.style.display = 'none';
+      return;
+    }
+    
+    const comment = form.comment.value.trim();
+    
+    if (!comment) {
+      commentError.textContent = 'لطفاً نظر خود را وارد کنید.';
+      commentError.style.display = 'block';
+      return;
+    }
+    
+    try {
+      const res = await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ comment }),
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        commentError.textContent = data.error || 'خطا در ثبت نظر.';
+        commentError.style.display = 'block';
+        return;
+      }
+      
+      // Success - reload comments and reset form
       form.reset();
+      await loadComments();
+    } catch (error) {
+      console.error('Error submitting comment:', error);
+      commentError.textContent = 'ارتباط با سرور برقرار نشد.';
+      commentError.style.display = 'block';
     }
   });
+
+  // Initialize
+  checkAuthAndUpdateUI();
+  loadComments();
 </script>
 
 </body>
